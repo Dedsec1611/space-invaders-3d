@@ -120,6 +120,7 @@ void aggiornaScoreSeMaggiore(const std::string& nomeFile);
 void checkNavicellaIsInvincibile();
 void renderText();
 void renderTextStartGame();
+void renderStartModels(glm::mat4 view, glm::mat4 projection);
 void renderTextCentered(const std::string& text, float x, float y, float scale, glm::vec3 color);
 void selezionaVista();
 void impostaPosizioni();
@@ -278,8 +279,11 @@ void processInput(GLFWwindow* window)
 		moveRight = true;
 
 	if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS && vista == -1)
-		vista = 0;
-	if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS && vista == -1)
+		vista = 1; 
+		alieno.setSpeedx(alieno.getSpeedx() * 4.0f);
+		alieno.setSpeedz(alieno.getSpeedz() * 1.5f);
+	if (
+(window, GLFW_KEY_2) == GLFW_PRESS && vista == -1)
 		vista = 1;
 
 	if (navicella.getVite() < 0 && glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS && caricaLivello1) {
@@ -1241,14 +1245,85 @@ void render(Shader shaderBlur, Shader shaderBloomFinal)
 
 	glDisable(GL_DEPTH_TEST);
 	
-	if (vista != -1) {
-		renderText();
+	if (vista == -1) {
+		// schermata iniziale
+		// disegna alieni e navicelle sullo sfondo
+		glm::mat4 identityView = glm::mat4(1.0f);
+		glm::mat4 identityProj = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
+		renderStartModels(identityView, identityProj);
+		renderTextStartGame();
 	}
 	else {
-		renderTextStartGame();
+		renderText();
 	}
 	
 	glEnable(GL_DEPTH_TEST);
+}
+void renderStartModels(glm::mat4 view, glm::mat4 projection) {
+	static float time = 0.0f;
+	time += 0.01f;
+	static float lastShotTime = 0.0f;
+	static std::vector<glm::vec3> proiettili;
+
+	float radius = 3.0f;
+	float scaleFactorAlieni = 0.15f; // più piccoli
+	float scaleFactor = 0.3f; // più piccoli
+
+	// ALIENI in movimento circolare
+	for (int i = 0; i < 3; ++i) {
+		float angle = time + i * glm::radians(120.0f); // distribuiti a 120°
+		float x = cos(angle) * radius;
+		float z = sin(angle) * radius - 8.0f; // z fisso più distante
+
+		glm::mat4 modelAlieno = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.0f, z));
+		modelAlieno = glm::scale(modelAlieno, glm::vec3(scaleFactorAlieni));
+		alienoShader.use();
+		alienoShader.setMat4("projection", projection);
+		alienoShader.setMat4("view", view);
+		alienoShader.setMat4("model", modelAlieno);
+		modelAlieno1.Draw(alienoShader);
+	}
+
+	// NAVICELLA che insegue il primo alieno con leggero ritardo
+	float delay = 0.3f;
+	float angleNavi = time - delay;
+	float xNavi = cos(angleNavi) * radius;
+	float zNavi = sin(angleNavi) * radius - 7.0f;
+	glm::vec3 posNavicella(xNavi, 0.0f, zNavi);
+
+	glm::mat4 modelNavi = glm::translate(glm::mat4(1.0f), glm::vec3(xNavi, 0.0f, zNavi));
+	modelNavi = glm::scale(modelNavi, glm::vec3(scaleFactor));
+	navicellaShader.use();
+	navicellaShader.setMat4("projection", projection);
+	navicellaShader.setMat4("view", view);
+	navicellaShader.setMat4("model", modelNavi);
+	modelNavicella.Draw(navicellaShader);
+
+	// SPARO: ogni 2 secondi
+	if (time - lastShotTime > 2.0f) {
+		glm::vec3 partenza = posNavicella;
+		partenza.y += 0.3f; // per partire da sopra la navicella
+		proiettili.push_back(partenza);
+		lastShotTime = time;
+	}
+
+	// RENDER PROIETTILI (verso +Y)
+	proiettileShader.use();
+	proiettileShader.setMat4("projection", projection);
+	proiettileShader.setMat4("view", view);
+
+	for (int i = 0; i < proiettili.size(); ++i) {
+		proiettili[i].y += 0.1f; // movimento verticale verso l'alto
+
+		glm::mat4 modelProj = glm::translate(glm::mat4(1.0f), proiettili[i]);
+		modelProj = glm::scale(modelProj, glm::vec3(0.05f, 0.3f, 0.05f));
+		proiettileShader.setMat4("model", modelProj);
+		modelCubo.Draw(proiettileShader);
+	}
+
+	// Rimuovi proiettili troppo in alto
+	proiettili.erase(std::remove_if(proiettili.begin(), proiettili.end(),
+		[](const glm::vec3& p) { return p.y > 5.0f; }), proiettili.end());
 }
 
 void renderTextStartGame() {
@@ -1258,16 +1333,16 @@ void renderTextStartGame() {
 	float deltaY = SCR_HEIGHT / 10.0f; // Spazio verticale tra le scritte
 	float dimensione = 0.5f * (SCR_HEIGHT / 1000.0f);
 
-	std::string titolo = "SPACE INVADERS";
+	std::string titolo = "SPACE INVADERS 3D";
 	renderTextCentered(titolo, centroX, centroY + 3 * deltaY, dimensione * 4, glm::vec3(1.0, 0.0f, 0.0f));
 
 	std::string vista = "Select view mode";
 	renderTextCentered(vista, centroX, centroY + deltaY, dimensione * 1.5, glm::vec3(1.0f, 1.0f, 0.26f));
 
-	std::string opzione1 = "Press key 1 for traditional 2D mode";
+	std::string opzione1 = "Press key 1 for speed 3D mode - TODO";
 	renderTextCentered(opzione1, centroX, centroY, dimensione, glm::vec3(1.0, 1.0f, 1.0f));
 
-	std::string opzione2 = "Press key 2 for action 3D mode";
+	std::string opzione2 = "Press key 2 for normal 3D mode";
 	renderTextCentered(opzione2, centroX, centroY - deltaY, dimensione, glm::vec3(1.0f, 1.0f, 1.0f));
 
 	std::string istruzioni = "Keys A and D to move, Space to shoot";
