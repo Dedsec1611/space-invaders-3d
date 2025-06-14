@@ -44,8 +44,10 @@ private:
     float alpha = 0.3;
     Shader shader;
     Shader bonusShader;
-    std::vector<Model> models =  std::vector<Model>(5);
+    Shader proiettileShader;
     Model modelSfera;
+    Model modelCubo;
+    std::vector<Model> models =  std::vector<Model>(5);
     bool spawnaAlieni = true;
     double startTimeLoadNewLevel;
     bool muoviVersoDx = true;
@@ -60,11 +62,36 @@ private:
     std::vector<std::vector<int>> mapBonus;
     std::vector<std::vector<int>> mapHitted;
     Suono suono;
+    bool modalitaVelocitaCasuale = false;
 
+    bool movimentoSerpentina = false;
+    float serpentinaOffset = 0.0f;
+    float serpentinaAmpiezza = 1.0f;
+    float serpentinaFrequenza = 2.0f;
+    float tempoUltimoCambioSerpentina = 0.0f;
+    float intervalloCambioSerpentina = 2.0f;
+
+    float tempoUltimoCambioDirezione = 0.0f;
+    float intervalloCambioDirezione = 2.0f;
+    int direzioneCasuale = 0; // -1 = sinistra, 1 = destra, 0 = fermo
+
+    double ultimoSparoRipetuto = 0.0f;
+    double intervalloSparoRipetuto = 0.5f;
+    double ultimoTempoRaffica = -10.0f;
+    bool mostraAvvisoRaffica = false;
 public:
     // Costruttore
     Alieno() {}
 
+    void setProiettileShader(Shader s) { proiettileShader = s; }
+    void setModelCubo(Model m) { modelCubo = m; }
+    void setModalitaVelocitaCasuale(bool attiva) {
+        modalitaVelocitaCasuale = attiva;
+    }
+
+    bool getModalitaVelocitaCasuale() const {
+        return modalitaVelocitaCasuale;
+    }
     bool getMuoviVersoDx() const {
         return muoviVersoDx;
     }
@@ -594,6 +621,84 @@ public:
         return distSq <= radiusSq;
     }
 
+    void setVelocitaCasuale(float min, float max) {
+        if (!modalitaVelocitaCasuale) return;
+        float nuovaSpeed = generaNumeroCasualeFloat(min, max);
+
+        if (!std::isfinite(nuovaSpeed)) nuovaSpeed = 0.07f;
+        float maxSpeed = 0.3f;
+        if (nuovaSpeed > maxSpeed) nuovaSpeed = maxSpeed;
+        if (nuovaSpeed < 0.03f) nuovaSpeed = 0.03f;
+
+        speed = nuovaSpeed;
+        speedx = 0.0f;
+        speedz = 0.0f;
+    }
+
+    void aggiornaDirezioneCasuale(float time) {
+        if (!modalitaVelocitaCasuale) return;
+
+        if (time - tempoUltimoCambioDirezione > intervalloCambioDirezione) {
+            int nuovaDirezione = generaNumeroCasualeInt(-1, 1);
+            if (nuovaDirezione == 0 ) {
+                std::cout << "[INFO]Utlima raffica aggiornata: " << ultimoTempoRaffica << std::endl;
+                ultimoTempoRaffica = time;
+                std::cout << "[INFO] Inizio raffica registrato a: " << time << std::endl;
+            }
+            direzioneCasuale = nuovaDirezione;
+            tempoUltimoCambioDirezione = time;
+            std::cout << "[INFO] Direzione alieni cambiata: " << direzioneCasuale << std::endl;
+        }
+        if (direzioneCasuale == 0) {
+            std::cout << "[INFO] Mostra raffica: " << mostraAvvisoRaffica << std::endl;
+          //  if (time - ultimoTempoRaffica >= 8.0 && time - ultimoTempoRaffica < 10.0) {
+                mostraAvvisoRaffica = true;
+           // }
+            intervalloCambioDirezione = 0.5f;
+        }
+        else {
+            mostraAvvisoRaffica = false;
+            intervalloCambioDirezione = 1.0f;
+        }
+        
+
+        if (!muoviVersoDown) {
+            speedx = direzioneCasuale * speed;
+        }
+       
+
+        if (direzioneCasuale == 0 && time - ultimoTempoRaffica >= 5.0 && time - ultimoSparoRipetuto > intervalloSparoRipetuto) {
+            for (int i = 0; i < righeAlieni; ++i) {
+                for (int j = 0; j < colonneAlieni; ++j) {
+                    if (map[i][j] != 0) {
+                        inizializzaProiettili(proiettileShader, modelCubo, i, j);
+                    }
+                }
+            }
+            ultimoSparoRipetuto = time;
+        }
+    }
+
+    bool getMostraAvvisoRaffica() const { return mostraAvvisoRaffica; }
+
+    void abilitaMovimentoSerpentina(bool attiva) {
+        movimentoSerpentina = attiva;
+    }
+
+    void aggiornaMovimentoSerpentina(float time) {
+        if (!modalitaVelocitaCasuale) return;
+
+        if (time - tempoUltimoCambioSerpentina > intervalloCambioSerpentina) {
+            movimentoSerpentina = generaNumeroCasualeInt(0, 1) == 1;
+            std::cout << "[INFO] Movimento serpentina " << (movimentoSerpentina ? "ATTIVO" : "DISATTIVO") << std::endl;
+
+            tempoUltimoCambioSerpentina = time;
+        }
+
+        if (!movimentoSerpentina) return;
+        serpentinaOffset = serpentinaAmpiezza * sin(serpentinaFrequenza * time);
+        pos.x += serpentinaOffset * 0.01f; // Movimento fluido a serpentina
+    }
 
 
     bool isHitted(Proiettile& proiettile, glm::vec3 posAlieno) {

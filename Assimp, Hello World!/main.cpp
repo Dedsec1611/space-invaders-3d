@@ -280,10 +280,10 @@ void processInput(GLFWwindow* window)
 
 	if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS && vista == -1)
 		vista = 1; 
-		alieno.setSpeedx(alieno.getSpeedx() * 4.0f);
-		alieno.setSpeedz(alieno.getSpeedz() * 1.5f);
-	if (
-(window, GLFW_KEY_2) == GLFW_PRESS && vista == -1)
+		//alieno.setSpeedx(alieno.getSpeedx() * 2.0f);
+		deltaSparoAlieni = 1.0f;
+		alieno.setModalitaVelocitaCasuale(true);
+	if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS && vista == -1)
 		vista = 1;
 
 	if (navicella.getVite() < 0 && glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS && caricaLivello1) {
@@ -358,6 +358,21 @@ void aggiornaScoreSeMaggiore(const std::string& nomeFile) {
 
 void idle()
 {
+	float tempoAttuale = glfwGetTime();
+
+	// aggiornamento velocità alieni randomica nel tempo
+	static float tempoUltimaVariazione = 0.0f;
+	static float intervalloCambio = generaNumeroCasualeFloat(5.0f, 15.0f);
+
+	if (tempoAttuale - tempoUltimaVariazione >= intervalloCambio) {
+		alieno.setVelocitaCasuale(1.5f, 4.0f);
+		tempoUltimaVariazione = tempoAttuale;
+		intervalloCambio = generaNumeroCasualeFloat(5.0f, 15.0f);
+
+		std::cout << "[INFO] Velocità alieni cambiata! X: " << alieno.getSpeedx()
+			<< ", Z: " << alieno.getSpeedz() << std::endl;
+	}
+
 	if (cameraPos.x == 0.0f && cameraPos.y == 5.5f && cameraPos.z == 16.5f) {
 		selezionaVista();
 	}
@@ -387,6 +402,8 @@ void idle()
 	alieno.setTranslateSpeedProiettili(deltaTime);
 	esplosione.setTranslateSpeed(esplosione.getSpeed() * deltaTime);
 
+	alieno.setProiettileShader(proiettileShader);
+	alieno.setModelCubo(modelCubo);
 	//Inizia il gioco dopo startTimeDelta secondi
 	if (deltaTimeExecute >= startTimeDelta && vista != -1) {
 
@@ -1102,7 +1119,8 @@ int main()
 		stencilShader.use();
 		stencilShader.setMat4("view", view);
 		//stencilShader.setVec3("color", glm::vec3(1.0f, 1.0f, 0.26f));
-		
+		alieno.aggiornaDirezioneCasuale(glfwGetTime());
+
 		for (auto& pianeta : pianeti) {
 			pianeta.update(deltaTime);
 		}
@@ -1210,7 +1228,7 @@ void render(Shader shaderBlur, Shader shaderBloomFinal)
 	proiettileSpeciale.checkColpiBonus(navicella.getIsHitted());
 	checkCollisioneAlieniBarriere();
 
-
+	
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// 2. blur bright fragments with two-pass Gaussian Blur 
@@ -1339,7 +1357,7 @@ void renderTextStartGame() {
 	std::string vista = "Select view mode";
 	renderTextCentered(vista, centroX, centroY + deltaY, dimensione * 1.5, glm::vec3(1.0f, 1.0f, 0.26f));
 
-	std::string opzione1 = "Press key 1 for speed 3D mode - TODO";
+	std::string opzione1 = "Press key 1 for speed 3D mode";
 	renderTextCentered(opzione1, centroX, centroY, dimensione, glm::vec3(1.0, 1.0f, 1.0f));
 
 	std::string opzione2 = "Press key 2 for normal 3D mode";
@@ -1364,8 +1382,18 @@ void renderText() {
 	float deltaY = SCR_HEIGHT / 10.0f; // Spazio verticale tra le scritte
 	float puntoAltezza = SCR_HEIGHT - (SCR_HEIGHT / 10.0f);
 	float dimensione = 0.5f * (SCR_HEIGHT/1000.0f);
-
+	float centerX = SCR_WIDTH / 2.0f;
+	float centerY = SCR_HEIGHT / 2.0f;
 	std::string viteNavicella = "LIFES:" + std::to_string(navicella.getVite());
+	std::string avviaRaffica = "RAFFICA IN ARRIVO!";
+	// Increase the size of the text
+	gameOverScale += gameOverGrowthRate;
+
+	// Stop growing after a certain size
+	if (gameOverScale > dimensione * 4) {
+		gameOverScale = dimensione * 4; // Max size
+	}
+
 
 	if (navicella.getVite() > 0) {
 		RenderText(viteNavicella.c_str(), centro, puntoAltezza, dimensione, glm::vec3(1.0, 1.0f, 1.0f));
@@ -1374,7 +1402,9 @@ void renderText() {
 		std::string vite = "LIFES:" + std::to_string(0);
 		RenderText(vite.c_str(), centro, puntoAltezza, dimensione, glm::vec3(1.0, 1.0f, 1.0f));
 	}
-
+	/*if (alieno.getMostraAvvisoRaffica()) {
+		renderTextCentered(avviaRaffica.c_str(), centerX - 200 * gameOverScale, centerY, gameOverScale, glm::vec3(1.0, 1.0f, 1.0f));
+	}*/
 	std::string recordScore = "RECORD:" + std::to_string(record);
 	RenderText(recordScore.c_str(), centro + delta, puntoAltezza, dimensione, glm::vec3(1.0, 1.0f, 1.0f));
 
@@ -1400,20 +1430,12 @@ void renderText() {
 		RenderText(viteNavicella.c_str(), centro, puntoAltezza, dimensione, glm::vec3(1.0, 1.0f, 1.0f));
 
 		// Game over logic
-		float centerX = SCR_WIDTH / 2.0f;
-		float centerY = SCR_HEIGHT / 2.0f;
+	
 
 		std::string gameOverText = "GAME OVER";
 		RenderText(gameOverText.c_str(), centerX - 200 * gameOverScale, centerY, gameOverScale, glm::vec3(1.0, 1.0f, 1.0f));
 
-		// Increase the size of the text
-		gameOverScale += gameOverGrowthRate;
-
-		// Stop growing after a certain size
-		if (gameOverScale > dimensione * 4) {
-			gameOverScale = dimensione * 4; // Max size
-		}
-
+		
 		if (gameOverScale == (dimensione * 4)) {
 			std::string restart = "Press Enter to restart";
 			renderTextCentered(restart, centro - delta, centerY - 4 * deltaY, dimensione, glm::vec3(1.0f, 1.0f, 1.0f));
